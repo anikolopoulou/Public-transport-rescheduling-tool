@@ -2,29 +2,27 @@ import gurobipy as gp
 from gurobipy import GRB
 import numpy as np
 from gurobipy import GRB
-from collections import defaultdict
 
 data_header = np.loadtxt('Instances/Transfer_Sync.txt', max_rows=1, dtype=int)
-print(data_header)
 
-#common_stops = data_header[0]
 i = data_header[0] # Collector line
 T = data_header[2] # length of planning period in minutes; the planning period can be standardized as [0,T]
 m = data_header[3] # number of stations of line l
-print('T: ', T)
+
 
 #### Create Sets ####
-
 # Set of PT Lines
 I = [i for i in range(1, i+1)] # Set of PT Lines
-print('I: ', I)
+
+#Transfer Nodes - It is valid only in the case that all lines have the same number of transfer stations
+TN = [i for i in range(1,3)] # Set of transfer nodes
 
 # Set of Stations of line i
 data_header_14 = np.loadtxt('Instances/Station Info.txt', max_rows=1, dtype=int)
 Sl = {}
 for i in I:
     Sl[i] = [m for m in range (1, data_header_14[i]+1)] # # of station m of each line i
-print('Sl: ', Sl)
+
 
 # Set of trips of a line i We consider the same number of trips in each line
 data_header_2 = np.loadtxt('Instances/Transfer_Sync.txt', skiprows = 1, max_rows=1, dtype=int)
@@ -32,54 +30,33 @@ IL = {}
 for i in I:
     IL[i] = [i for i in range(1, data_header_2[i-1]+1)]
     print(len(IL[i]))
-print('IL: ', IL)
 
-
-#Set of transfer stops/ common stations to lines i and j
+# Set of transfer stops/ common stations to lines i and j
 data_header_3 = np.loadtxt('Instances/Common Stops.txt', max_rows=2, dtype=int)
-Bij =  defaultdict(dict)
-for i in I:
-    for j in I:
-        if i == j:
-            Bij[i,j] = []
-        else:
-            ###shared = sorted(bus_lines[line_ids[i]] & bus_lines[line_ids[j]])
-            Bij[i,j] = [3,4]
-
-
-print('Bij:', Bij)
-'''
 Bij = {}
 for i in I:
     for j in I:
-        Bij[(i, j)] = [i for i in range(1,3)]
-'''
-
+        Bij[(i, j)] = [1 , 2] # Set of common stops for i-j lines !!! Only for one common station (metro station) and 1 feeder line and 1 collector line
+        if i == j : Bij[(i,j)] = [0,0]
 for i in I:
     for j in I:
-        print("a: ", i,j, ':', Bij[i,j])
-        for b in Bij[i,j]:
-            print("b: ", b)
-
-
+        #     if i !=j:
+            for b in Bij[(i, j)]:
+                print("a: ", i, j, b)
 
 # headway of line i in the existing timetable
 data_header_4 = np.loadtxt('Instances/Transfer_Sync.txt', skiprows= 3, max_rows=1, dtype=int)
 hi = {}  #(T/fi)
 for i in I:
     hi[i] = data_header_4[i-1]
-print('hi: ', hi)
 
 delta = 2 # given headway amplitude factor
-print('Delta: ', delta)
 
 # minimum headway of line i allowed for synchronized timetable
 himin = hi[i] - delta # himin = hi - delta
-print('himin: ', himin)
 
 # maximum headway of line i allowed for synchronized timetable
 himax = hi[i] + delta # himax = hi - delta
-print('himax: ', himax)
 
 # Number of Passengers that embark in the vehicle at station m of line i
 data_header_15 = np.loadtxt('Instances/Passenger Load_1.txt', max_rows=5, dtype=int) # na ftiaxw to arxeio .txt
@@ -92,7 +69,6 @@ for i in I:
                 qi[i, m, p] = data_header_15[m-1]
             if i == 2:
                 qi[i, m, p] = data_header_21[m - 1]
-print('qi: ', qi)
 
 # Number of Passengers that disembark in the vehicle at station m of line i
 data_header_16 = np.loadtxt('Instances/Passenger Unload_1.txt', max_rows=5, dtype=int) # na ftiaxw to arxeio .txt
@@ -105,15 +81,12 @@ for i in I:
                 qu[i, m, p] = data_header_16[m-1]
             if i ==2:
                 qu[i, m, p] = data_header_20[m - 1]
-print('qu: ', qu)
 
 # the maximal value of deviation allowed from the departure times
 eta = 2
-print('eta: ', eta)
 
 # Number of seats in each vehicle
 NS = 12
-print('NS: ', NS)
 
 # Travel Time from Depot of line i to node b in the planning period
 data_header_8 = np.loadtxt('Instances/Transfer_Sync.txt', skiprows= 4, max_rows=2, dtype=int)
@@ -122,10 +95,9 @@ for i in I:
     for j in I:
         if i !=j:
             counter = 0
-            for b in Bij[i,j]:
+            for b in TN:
                 tib[i, b] = data_header_8[i-1][counter]
                 counter = counter +1
-print('tib: ', tib)
 
 # Travel Time from station m-1 to station m of line i #
 data_header_17 = np.loadtxt('Instances/Travel Time between Stations of line 1.txt', max_rows=5, dtype=int) # for station m=1 the distance from the station m-1 is equal to 0
@@ -139,7 +111,6 @@ for i in I:
         if i == 2:
             #if m == len(Sl[i]): break
             ttr[i, m] = data_header_18[m-1]
-print("ttr: ", ttr)
 
 #estimated number of passengers, each transferring from line i to line j at transfer node b when the initial timetable is used
 data_header_5 = np.loadtxt('Instances/Passenger Info.txt', skiprows=1, max_rows=2, dtype=int)
@@ -148,23 +119,18 @@ for i in I:
     for j in I:
         if i != j:
             counter = 1
-            for b in Bij[i,j]:
+            for b in Bij[(i,j)]:
                 nibj[i, b, j]= data_header_5[i-1][counter]
                 counter = counter +1
-print('nibj : ', nibj)
 
 #data_header_ = np.loadtxt('Instances/Transfer_Sync.txt', max_rows=, dtype=int)
 wb_min = 2
 
 #for b in Bij[i,j]:
 #    wb_min = 10
-print('wb_min: ', wb_min)
 
 #data_header_ = np.loadtxt('Instances/Transfer_Sync.txt', max_rows=, dtype=int)
 wb_max= 4
-#for b in Bij[i,j]:
-#    wb_max = 10
-print('wb_max: ', wb_max)
 
 # departure time of p-th trip of line i in the initial timetable
 data_header_10 = np.loadtxt('Instances/Initial Timetable.txt', max_rows=len(I), dtype=int)
@@ -172,7 +138,6 @@ x_barip = {}
 for i in I:
     for p in IL[i]:
         x_barip[i, p] = data_header_10[i-1][p-1]
-print('x_barip: ', x_barip)
 
 #Maximum number of passengers that train i of line l can load
 Cli = 25
@@ -189,15 +154,30 @@ for i in I:
     Q[i] = 30 #fixed
 
 # Big M
-M = 1000
+M = 10000
+print("M: ", M)
 
-### Initialize the Gurobi model ###
+hi = {}  #(T/fi) # headway of line i in the existing timetable
+for i in I:
+    hi[i] = data_header_4[i-1]
+
+#actual travel time up to station m
+data_header_25 = np.loadtxt('Instances/Actual Travel Time between Stations of line 1.txt', max_rows=5, dtype=int)
+data_header_26 = np.loadtxt('Instances/Actual Travel Time between Stations of line 2.txt', max_rows=5, dtype=int)
+uim= {}
+for i in I:
+    for m in Sl[i]:
+        if i == 1:
+            uim[i, m] = data_header_25[m-1]
+        if i ==2:
+            uim[i, m] = data_header_26[m-1]
+
+### Initialize the model ###
 model = gp.Model()
 
 ### Decision Variables ###
 xip = {(i, p): model.addVar(lb = 0, vtype=gp.GRB.INTEGER, name=f"xip_{i}_{p}".format(i, p)) for i in I for p in IL[i]}
-y = {(i, p, j, q, b): model.addVar(vtype=gp.GRB.BINARY, name=f"y_{i}_{p}_{j}_{q}_{b}".format(i,p, j, q, b)) for i in I for p in IL[i] for j in I for q in IL[j] for b in Bij[i,j]}
-#nipbj = {(i, p, b, j): model.addVar(vtype=gp.GRB.INTEGER, name=f"nipbj_{i}_{p}_{b}_{j}".format(i, p, b, j)) for i in I for p in IL[i] for j in I for b in Bij[(i,j)]} ###egine parameter
+y = {(i, p, j, q, b): model.addVar(vtype=gp.GRB.BINARY, name=f"y_{i}_{p}_{j}_{q}_{b}".format(i,p, j, q, b)) for i in I for p in IL[i] for j in I for q in IL[j] for b in TN}
 pimp = {(i, m, p): model.addVar(lb = 0, vtype=gp.GRB.INTEGER, name= f"pimp_{i}_{m}_{p}".format(i, m, p)) for i in I for m in Sl[i] for p in IL[i]}
 limp = {(i, m, p): model.addVar(lb = 0, vtype=gp.GRB.INTEGER, name= f"limp_{i}_{m}_{p}".format(i, m, p)) for i in I for m in Sl[i] for p in IL[i]}
 dimp = {(i, m, p): model.addVar(vtype=gp.GRB.CONTINUOUS, name=f"dimp_{i}_{m}_{p}".format(i, m, p)) for i in I for m in Sl[i] for p in IL[i]}
@@ -213,8 +193,8 @@ model.addConstrs(xip[i, p] - xip[i, p-1] <=himax for i in I for p in IL[i] if p>
 model.addConstrs((xip[i, p] - x_barip[i, p] >= -eta) for i in I for p in IL[i]) #eq(5)
 model.addConstrs((xip[i, p] - x_barip[i, p] <= eta) for i in I for p in IL[i]) #eq(5)
 #model.addConstrs(nibj[i, b, j] + ((nibj[i, b, j]) / hi[i]) * (xip[i, p] - xip[i, p-1] - hi[i]) == nipbj[i, p, b, j] for i in I for p in IL[i] for j in I for b in Bij[(i,j)] if p > 1 if i !=j ) #eq(6)
-model.addConstrs(((xip[j, q] + tib[j, b]) - (xip[i, p] + tib[i, b])) >= wb_min - M*(1 - y[i, p, j, q, b]) for j in I for q in IL[j] for i in I for b in Bij[i,j] for p in IL[i] if i !=j) #eq(7)
-model.addConstrs(((xip[j, q] + tib[j, b]) - (xip[i, p] + tib[i, b])) <= wb_max + M*(1 - y[i, p, j, q, b]) for j in I  for q in IL[j] for i in I for b in Bij[i,j] for p in IL[i] if i !=j ) #eq(8)
+model.addConstrs(((xip[j, q] + tib[j, b]) - (xip[i, p] + tib[i, b])) >= wb_min - M*(1 - y[i, p, j, q, b]) for j in I for q in IL[j] for i in I for b in TN for p in IL[i] if i !=j) #eq(7)
+model.addConstrs(((xip[j, q] + tib[j, b]) - (xip[i, p] + tib[i, b])) <= wb_max + M*(1 - y[i, p, j, q, b]) for j in I  for q in IL[j] for i in I for b in TN for p in IL[i] if i !=j ) #eq(8)
 #model.addConstrs(sum(y[i, p, j, q, b]) <= 1 for q in IL[j] if i!= j if q >= 1 if i < j ) #eq(9)
 model.addConstrs(xip[i, len(IL[i])] <= T for i in I) #eq(10)
 model.addConstrs(xip[i, len(IL[i])] >= 0 for i in I) #eq(10)
@@ -231,22 +211,18 @@ model.addConstrs((pimp[i, m, p] == uim[i, m] + (pimp[i, m-1, p] - uim[i, m-1]) +
 model.addConstrs((limp[i, m, p] == limp[i, m-1, p] + qi[i, m, p] - qu[i, m, p]) for i in I for m in Sl[i] for p in IL[i] if m>1)
 model.addConstrs((limp[i, 1, p] == qi[i,1,p] - qu[i,1,p]) for i in I for p in IL[i])
 
+#new Constraints
+#model.addConstrs(nipbj[i, p, b, j] <= Cli for i in I for p in IL[i] for j in I for b in Bij[(i,j)])
+
 # Initialization Constraints
 model.addConstrs((pimp[i, 1, p] == uim[i,1]) for i in I for m in Sl[i] for p in IL[i])
-#model.addConstrs((limp[i, 1, p] == 5) for i in I for m in Sl[i] for p in IL[i])
-model.addConstrs((y[i, p, j, q, b] == 0) for i in I for p in IL[i] for j in I for q in IL[j] for b in Bij[i,j] if i == j)
-#model.addConstrs((y[i, p, j, q, Bij[(i,j)][b]] == 1) for i in I for p in IL[i] for j in I for q in IL[j] for b in Bij[(i,j)])
+model.addConstrs(y[i, p, j, q, b] == 0 for i in I for p in IL[i] for j in I for q in IL[j] for b in TN if i == j)
 
 ### Objective Function ###
-model.setObjective(sum(sum(sum(sum(sum(y[i, p, j, q, b] for i in I) for p in IL[i]) for j in I) for q in IL[j]) for b in Bij[i, j]), gp.GRB.MAXIMIZE)
+model.setObjective(sum(sum(sum(sum(sum(y[i, p, j, q, b] for i in I) for p in IL[i]) for j in I) for q in IL[j]) for b in TN), gp.GRB.MAXIMIZE)
 
 model.optimize()
 #model.display()
 model.write("file.lp")
 for v in model.getVars():
     print('%s %g' % (v.varName, v.x))
-
-
-# Write the model to a file
-model.write("model_equations.lp")
-
